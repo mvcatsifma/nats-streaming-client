@@ -1,0 +1,30 @@
+version: '3.5'
+
+networks:
+  default:
+
+services:
+  messaging:
+    # -m set the HTTP PORT for monitoring
+    # -D enable debugging output
+    # -V trace the raw protocol
+    # -sc streaming server config file
+    command: ["-m", "8222", "-D", "-V", "-sc", "/run/secrets/nats-config"]
+    image: nats-streaming:0.14.3
+    networks:
+      default:
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+      - "6222:6222"
+    secrets:
+      - nats-config
+    volumes:
+      - store-data:/var/lib/nats-streaming/data
+
+secrets:
+  nats-config:
+    file: nats-config
+
+volumes:
+  store-data:

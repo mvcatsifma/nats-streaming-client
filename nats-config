@@ -1,0 +1,11 @@
+streaming: {
+    cluster_id: test-event-broker
+    store: "file"
+    dir: "/var/lib/nats-streaming/data" # see stack-dev.yml
+    store_limits: {
+        max_msgs: 0             # unlimited
+        max_bytes: 0            # unlimited
+        max_age: "0"            # unlimited
+        max_inactivity: "0"     # unlimited
+    }
+}

@@ -17,29 +17,17 @@ type manager struct {
 	statusChangeSubscribers map[chan types.ConnectionStatus]bool
 }
 
-func OpenWithRetry(ctx context.Context, conn types.IConnectionManager) {
-	err := conn.Open()
-	if err == nil {
-		return
+func NewConnectionManager(clusterId string, clientId string) *manager {
+	initialStatus := types.NOT_CONNECTED
+	result := &manager{
+		ClusterId:               clusterId,
+		ClientId:                clientId,
+		Status:                  initialStatus,
+		statusChangeChan:        make(chan types.ConnectionStatus, 1),
+		statusChangeSubscribers: make(map[chan types.ConnectionStatus]bool),
 	}
-	ticker := time.NewTicker(5 * time.Second)
-ConnectLoop:
-	for {
-		select {
-		case <-ticker.C:
-			err := conn.Open()
-			if err != nil {
-				log.Printf("connect error: %v", err)
-				continue
-			} else {
-				break ConnectLoop
-			}
-		case <-ctx.Done():
-			log.Println("cancel")
-			break ConnectLoop
-		}
-	}
-	ticker.Stop()
+	result.sendStatusChange(initialStatus) // send initial status
+	return result
 }
 
 func (m *manager) Open() (err error) {
@@ -64,18 +52,6 @@ func (m *manager) Open() (err error) {
 	m.sendStatusChange(newStatus)
 
 	return nil
-}
-
-func (m *manager) sendStatusChange(newStatus types.ConnectionStatus) {
-	for sub := range m.statusChangeSubscribers {
-		select {
-		case sub <- newStatus:
-			log.Printf("write status %v\n", newStatus.String())
-		case <-time.Tick(1 * time.Second): // close and remove slow subscribers
-			close(sub)
-			delete(m.statusChangeSubscribers, sub)
-		}
-	}
 }
 
 func (m *manager) Close() (err error) {
@@ -113,15 +89,39 @@ func (m *manager) GetConn() (stan.Conn, error) {
 	return m.Conn, nil
 }
 
-func NewConnectionManager(clusterId string, clientId string) *manager {
-	initialStatus := types.NOT_CONNECTED
-	result := &manager{
-		ClusterId:               clusterId,
-		ClientId:                clientId,
-		Status:                  initialStatus,
-		statusChangeChan:        make(chan types.ConnectionStatus, 1),
-		statusChangeSubscribers: make(map[chan types.ConnectionStatus]bool),
+func (m *manager) sendStatusChange(newStatus types.ConnectionStatus) {
+	for sub := range m.statusChangeSubscribers {
+		select {
+		case sub <- newStatus:
+			log.Printf("write status %v\n", newStatus.String())
+		case <-time.Tick(1 * time.Second): // close and remove slow subscribers
+			close(sub)
+			delete(m.statusChangeSubscribers, sub)
+		}
 	}
-	result.sendStatusChange(initialStatus) // send initial status
-	return result
+}
+
+func OpenWithRetry(ctx context.Context, conn types.IConnectionManager) {
+	err := conn.Open()
+	if err == nil {
+		return
+	}
+	ticker := time.NewTicker(5 * time.Second)
+ConnectLoop:
+	for {
+		select {
+		case <-ticker.C:
+			err := conn.Open()
+			if err != nil {
+				log.Printf("connect error: %v", err)
+				continue
+			} else {
+				break ConnectLoop
+			}
+		case <-ctx.Done():
+			log.Println("cancel")
+			break ConnectLoop
+		}
+	}
+	ticker.Stop()
 }
